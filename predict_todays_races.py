@@ -153,15 +153,20 @@ def print_results(prediction_dict):
         
         print()
 
+def process_results(predictions, raceNumbers, names):
+    prediction_dict = {}
+    for i in range(len(predictions)):
+        if raceNumbers[i] in prediction_dict:
+            prediction_dict[raceNumbers[i]].append({'Name': names[i], 'Predicted odds': round(predictions[i] * 100, 1)})
+        else:
+            prediction_dict[raceNumbers[i]] = [{'Name': names[i], 'Predicted odds': round(predictions[i] * 100, 1)}]
+    
+    print_results(prediction_dict)
 
-def main():
-    at = ApiTool()
-    year = input('Year: ')
-    month = input('Month: ')
-    day = input('Day: ')
-    card = json.loads(at.getCardsForDate(day, month, year).text)['collection'][0]
+
+def process_card(card, car_model, volt_model, at):
     races = fetchRaces(at, card['cardId'])
-    model = pickle.load( open( "model.p", "rb" ) )
+    
     all_horses = []
 
     for race in races:
@@ -175,23 +180,51 @@ def main():
 
     add_win_percentages_to_df(df)
 
-    names = df.Name
-    raceNumbers = df.raceNumber
-    cols_to_delete = ['Name', 'CoachName', 'DriverName', 'raceNumber']
-    for col in cols_to_delete:
-        del df[col]
+    car_horses = df.loc[df['StartType'] == 0]
+    volt_horses = df.loc[df['StartType'] == 1]
 
+    car_names = car_horses.Name.values
+    car_raceNumbers = car_horses.raceNumber.values
 
-    predictions = model.predict(df)
+    volt_names = volt_horses.Name.values
+    volt_raceNumbers = volt_horses.raceNumber.values
 
-    prediction_dict = {}
-    for i in range(len(predictions)):
-        if raceNumbers[i] in prediction_dict:
-            prediction_dict[raceNumbers[i]].append({'Name': names[i], 'Predicted odds': round(predictions[i] * 100, 1)})
-        else:
-            prediction_dict[raceNumbers[i]] = [{'Name': names[i], 'Predicted odds': round(predictions[i] * 100, 1)}]
     
-    print_results(prediction_dict)
+
+    cols_to_delete = ['Name', 'CoachName', 'DriverName', 'raceNumber', 'horseWpr', 'StartType']
+    for col in cols_to_delete:
+        del car_horses[col]
+        del volt_horses[col]
+
+    if not car_horses.empty:
+        car_predictions = car_model.predict(car_horses)
+        print('CAR STARTS')
+        process_results(car_predictions, car_raceNumbers, car_names)
+    if not volt_horses.empty:
+        volt_predictions = volt_model.predict(volt_horses)
+        print('VOLT STARTS')
+        process_results(volt_predictions, volt_raceNumbers, volt_names)
+
+    
+    
+
+
+def main():
+    at = ApiTool()
+    year = input('Year: ')
+    month = input('Month: ')
+    day = input('Day: ')
+    car_model = pickle.load( open( "car_model.p", "rb" ) )
+    volt_model = pickle.load( open( "volt_model.p", "rb" ) )
+    cards = json.loads(at.getCardsForDate(day, month, year).text)['collection']
+
+    for card in cards:
+        if card['country']  != 'FI' and card['country']  != 'SE':
+            continue
+        print()
+        print(card['trackName'])
+        process_card(card, car_model, volt_model, at)
+    
 
 if __name__ == '__main__':
     main()
